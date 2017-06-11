@@ -50,20 +50,21 @@ int main()
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
+    cout << "Ran 0!" << endl;
 
     if (length && length > 2 && data[0] == '4' && data[1] == '2')
     {
-
+      cout << "Ran 1!" << endl;
       auto s = hasData(std::string(data));
       if (s != "") {
-      	
+      	cout << "Ran 2!" << endl;
       	
         auto j = json::parse(s);
         std::string event = j[0].get<std::string>();
         
         if (event == "telemetry") {
           // j[1] is the data JSON object
-
+          cout << "Ran 3!" << endl;
 
           if (!pf.initialized()) {
 
@@ -73,6 +74,7 @@ int main()
 			double sense_theta = std::stod(j[1]["sense_theta"].get<std::string>());
 
 			pf.init(sense_x, sense_y, sense_theta, sigma_pos);
+      cout << "Ran init!" << endl;
 		  }
 		  else {
 			// Predict the vehicle's next state from previous (noiseless control) data.
@@ -80,6 +82,7 @@ int main()
 			double previous_yawrate = std::stod(j[1]["previous_yawrate"].get<std::string>());
 
 			pf.prediction(delta_t, sigma_pos, previous_velocity, previous_yawrate);
+      cout << "Ran prediction!" << endl;
 		  }
 
 		  // receive noisy observation data from the simulator
@@ -112,7 +115,9 @@ int main()
 
 		  // Update the weights and resample
 		  pf.updateWeights(sensor_range, sigma_landmark, noisy_observations, map);
+      cout << "Ran updateWeights!" << endl;
 		  pf.resample();
+      cout << "Ran resample!" << endl;
 
 		  // Calculate and output the average weighted error of the particle filter over all time steps so far.
 		  vector<Particle> particles = pf.particles;
@@ -156,6 +161,7 @@ int main()
   // We don't need this since we're not using HTTP but if it's removed the program
   // doesn't compile :-(
   h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) {
+    cout << "Running onHttpRequest!" << endl;
     const std::string s = "<h1>Hello world!</h1>";
     if (req.getUrl().valueLength == 1)
     {
