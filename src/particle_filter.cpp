@@ -68,7 +68,10 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	for(Particle p : particles) {
 		p.x += velocity / yaw_rate * (sin(p.theta + yaw_rate) - sin(p.theta)) + dist_x(gen);
 		p.y += velocity / yaw_rate * (-cos(p.theta + yaw_rate) + cos(p.theta)) + dist_y(gen);
-		p.theta += yaw_rate * delta_t + dist_theta(gen);
+		double theta += yaw_rate * delta_t + dist_theta(gen);
+		while (theta >  M_PI) theta -= 2.*M_PI;
+    	while (theta < -M_PI) theta += 2.*M_PI;
+		p.theta = theta;
 	}
 
 }
@@ -129,6 +132,14 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			// LandmarkObs realLandmarkObs;
 			bool found = false;
 			Map::single_landmark_s real_landmark;
+
+
+
+
+			//////////// GAVIN TODO: IMPLEMENT dataAssociation INSTEAD OF THE BELOW CODE
+
+
+
 			for (Map::single_landmark_s candidate_landmark : map_landmarks.landmark_list) {
 				if(candidate_landmark.id_i == obs.id) {
 					// realLandmarkObs.id = real_landmark.id_i;
@@ -139,11 +150,15 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 				}
 			}
 
+			cout << "obs.id: " << obs.id << endl;
+			cout << "Got here updateWeights 1!" << endl;
+
 			if(!found) {
-				// log_p = 0;
-				// break;
-				throw "Did not find landmark!";
+				log_p = 0;
+				break;
+				// throw "Did not find landmark!";
 			}
+			cout << "Got here updateWeights 2!" << endl;
 
 			associations.push_back(obs.id);
 			sense_x.push_back(obs.x);
