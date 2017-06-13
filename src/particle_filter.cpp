@@ -28,7 +28,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Let us start with num_particles first set to 100.
 	default_random_engine gen;
 
-	int num_particles = 100;
+	num_particles = 100;
 
 	normal_distribution<double> dist_x(x, std[0]);
 	normal_distribution<double> dist_y(y, std[1]);
@@ -61,17 +61,24 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
 	default_random_engine gen;
 
-	normal_distribution<double> dist_x(0, std_pos[0]);
-	normal_distribution<double> dist_y(0, std_pos[1]);
-	normal_distribution<double> dist_theta(0, std_pos[2]);
+	normal_distribution<double> dist_x(0, std_pos[0] * delta_t);
+	normal_distribution<double> dist_y(0, std_pos[1] * delta_t);
+	normal_distribution<double> dist_theta(0, std_pos[2] * delta_t);
 
-	for(Particle p : particles) {
-		p.x += velocity / yaw_rate * (sin(p.theta + yaw_rate) - sin(p.theta)) + dist_x(gen);
-		p.y += velocity / yaw_rate * (-cos(p.theta + yaw_rate) + cos(p.theta)) + dist_y(gen);
-		double theta += yaw_rate * delta_t + dist_theta(gen);
-		while (theta >  M_PI) theta -= 2.*M_PI;
-    	while (theta < -M_PI) theta += 2.*M_PI;
-		p.theta = theta;
+	float eps = 0.0001;
+	for(Particle &p : particles) {
+		if(yaw_rate < eps && yaw_rate > -eps) {
+			p.x = p.x + velocity*delta_t*cos(p.theta);
+      		p.y = p.y + velocity*delta_t*sin(p.theta);
+      		// p.theta = p.theta;
+		} else {
+			p.x += velocity / yaw_rate * (sin(p.theta + yaw_rate * delta_t) - sin(p.theta)) + dist_x(gen);
+			p.y += velocity / yaw_rate * (-cos(p.theta + yaw_rate * delta_t) + cos(p.theta)) + dist_y(gen);
+			double theta =  p.theta + yaw_rate * delta_t + dist_theta(gen);
+			p.theta = theta;
+		}
+		// while (p.theta >  M_PI) p.theta -= 2.*M_PI;
+		// while (p.theta < -M_PI) p.theta += 2.*M_PI;
 	}
 
 }
@@ -90,6 +97,22 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 	// ???
 
+	for(LandmarkObs& ob : observations) {
+		// Find the closest observation from the observation list.
+		double bestDist = -1;
+		LandmarkObs bestLm;
+		for(LandmarkObs lm : predicted) {
+			double dist_x = lm.x - ob.x;
+			double dist_y = lm.y - ob.y;
+			double dist = sqrt(dist_x * dist_x + dist_y * dist_y);
+			if(bestDist < 0 || dist < bestDist) {
+				bestDist = dist;
+				bestLm = lm;
+			}
+		}
+		ob.id = bestLm.id;
+	}
+
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -107,14 +130,28 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 	double sig_x = std_landmark[0];
     double sig_y = std_landmark[1];
+	// 
+	// exit(0);
+
+	vector<LandmarkObs> predictedLandmarks;
+	for (Map::single_landmark_s candidate_landmark : map_landmarks.landmark_list) {
+		predictedLandmarks.push_back(LandmarkObs{
+			candidate_landmark.id_i,
+			candidate_landmark.x_f,
+			candidate_landmark.y_f,
+		});
+	}
+
 
 	for(Particle &p : particles) {
-		double prob;
+		long double prob = 1.0;
 		double log_p = 0;
 		vector<int> associations;
 		vector<double> sense_x;
     	vector<double> sense_y;
 
+		// transform the observations
+		std::vector<LandmarkObs> transformed_observations;
 		for(LandmarkObs obs : observations) {
 			// Transform from car coordinate system to map coordinate system:
 			double obs_mod = sqrt(obs.x * obs.x + obs.y * obs.y);
@@ -125,7 +162,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			// This is the landmark coordinates in absolute terms of the map
 			double lm_map_x = p.x + obs_mod * cos(map_alpha);
 			double lm_map_y = p.y + obs_mod * sin(map_alpha);
+			transformed_observations.push_back(LandmarkObs{obs.id, lm_map_x, lm_map_y});
+		}
+		dataAssociation(predictedLandmarks, transformed_observations);
 
+		
+		for(LandmarkObs trans_obs : transformed_observations) {
 
 			// Extract the landmark from the map
 			// Iterate through the map and find the matching landmark ID
@@ -133,50 +175,42 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			bool found = false;
 			Map::single_landmark_s real_landmark;
 
-
-
-
-			//////////// GAVIN TODO: IMPLEMENT dataAssociation INSTEAD OF THE BELOW CODE
-
-
-
 			for (Map::single_landmark_s candidate_landmark : map_landmarks.landmark_list) {
-				if(candidate_landmark.id_i == obs.id) {
-					// realLandmarkObs.id = real_landmark.id_i;
-					// realLandmarkObs.x = real_landmark.x_f;
-					// realLandmarkObs.y = real_landmark.x_f;
+				if(candidate_landmark.id_i == trans_obs.id) {
 					real_landmark = candidate_landmark;
 					found = true;
 				}
 			}
 
-			cout << "obs.id: " << obs.id << endl;
-			cout << "Got here updateWeights 1!" << endl;
-
 			if(!found) {
-				log_p = 0;
-				break;
-				// throw "Did not find landmark!";
+				throw "Did not find landmark!";
+				continue;
 			}
-			cout << "Got here updateWeights 2!" << endl;
+		
+			associations.push_back(real_landmark.id_i);
+			sense_x.push_back(real_landmark.x_f);
+			sense_y.push_back(real_landmark.y_f);
 
-			associations.push_back(obs.id);
-			sense_x.push_back(obs.x);
-			sense_y.push_back(obs.y);
+			double diff_x = trans_obs.x - real_landmark.x_f;
+			double diff_y = trans_obs.y - real_landmark.y_f;
 
-			double diff_x = lm_map_x - real_landmark.x_f;
-			double diff_y = lm_map_y - real_landmark.y_f;
+			long double denomin = 1.0/(2.0 * M_PI * sig_x * sig_y);
+			long double x_nom = (diff_x * diff_x) / (sig_x * sig_x);
+			long double y_nom = (diff_y * diff_y) / (sig_y * sig_y);
+			long double expon = exp(-0.5*(x_nom+y_nom));
+			long double meas_likelihood = denomin * expon;
 
-			log_p += -1 / 2 * (diff_x * diff_x / (sig_x * sig_x) + diff_y * diff_y / (sig_y * sig_y)) - log(2.*M_PI*sig_x*sig_y);
-
+      		prob *= meas_likelihood;
 		}
-		prob = exp(log_p);
+		
+		
 		p.weight = prob;
-		p = SetAssociations(p, associations, sense_x, sense_y);
+		// p = SetAssociations(p, associations, sense_x, sense_y);
 		
 	}
 	for (int i = 0; i < num_particles; ++i) {
 		weights[i] = particles[i].weight;
+		
 	}
 
 }
